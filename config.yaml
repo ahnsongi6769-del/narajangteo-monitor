@@ -30,8 +30,7 @@ allowed_region_names:
 allow_no_region_restriction: true
 
 # 참가 가능 업종코드 (반드시 포함되어야 함, 엄격 필터)
-required_industry_codes:
-  - "1468"
+required_industry_codes: []
 
 # API 검색 윈도우 (분)
 search_window_minutes: 35
