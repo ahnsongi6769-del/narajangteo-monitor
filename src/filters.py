@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,17 @@ INDUSTRY_FIELD_CANDIDATES: tuple[str, ...] = (
     "prtcptLmtCnstwkLcnsNm",
     "prtcptLmtIndstrytyNm",
 )
+
+
+# 업종 텍스트에서 숫자 코드 토큰만 추출하기 위한 정규식.
+# "소프트웨어개발(1468) / 정보처리(1469)" → ["1468", "1469"]
+# "14681" → ["14681"]  (이렇게 토큰화하면 '1468' substring 매칭의 false-positive 방지)
+_CODE_TOKEN_RE = re.compile(r"\d+")
+
+
+def _extract_code_tokens(text: str) -> set[str]:
+    """텍스트에서 연속된 숫자열만 뽑아 토큰 집합 반환."""
+    return set(_CODE_TOKEN_RE.findall(text or ""))
 
 
 def _first_nonempty(item: dict, fields: tuple[str, ...]) -> str:
@@ -122,6 +134,8 @@ def filter_by_industry(
             # 1468 미확인 → 엄격 제외
             continue
 
-        if all(code in text for code in required_codes):
+        # 숫자 토큰으로 분리해 정확 매칭 — "14681" / "21468" 같은 우연한 부분 일치 방지
+        code_tokens = _extract_code_tokens(text)
+        if all(code in code_tokens for code in required_codes):
             out.append(item)
     return out
