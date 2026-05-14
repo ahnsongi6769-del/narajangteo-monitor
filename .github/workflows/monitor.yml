@@ -1,0 +1,51 @@
+name: 나라장터 모니터
+
+on:
+  schedule:
+    # 30분마다 (UTC 기준이지만 cron 표현은 시각 무관)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: narajangteo-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run monitor
+        env:
+          NARA_API_KEY: ${{ secrets.NARA_API_KEY }}
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: python -m src.monitor
+
+      - name: Commit updated seen.json
+        # seen.json은 .gitignore에 있으므로 -f로 강제 추가
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f seen.json
+          if git diff --cached --quiet; then
+            echo "seen.json 변경 없음 — 커밋 건너뜀"
+          else
+            git commit -m "chore: update seen.json [skip ci]"
+            git push
+          fi

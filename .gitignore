@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+venv/
+
+# Environment / secrets
+.env
+.env.local
+
+# Dedup state — gitignored by default. GitHub Actions force-adds it (`git add -f seen.json`)
+# so the auto-commit still works. Remove this line if you'd rather track it normally.
+seen.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
