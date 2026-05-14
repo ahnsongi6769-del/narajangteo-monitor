@@ -1,14 +1,16 @@
-"""Microsoft Teams Workflows 웹훅 알림.
+"""Microsoft Teams Workflows 웹훅 알림 (Adaptive Card 형식).
 
-- POST {"text": "<HTML>"} 형식 (Workflows의 'Post to chat' 표준)
+Power Automate Workflows의 "Post adaptive card in a chat or channel" 트리거가
+받는 페이로드 형식 — `{"attachments": [{"contentType": "...adaptive", "content": {...}}]}`.
+
 - 한 공고당 한 메시지, 여러 건이면 1초 간격
-- 호출당 (성공, 실패) 카운트 반환
+- requests.post(json=...) 가 UTF-8 자동 처리 → 한글 깨짐 없음
 """
 from __future__ import annotations
 
-import html
 import logging
 import time
+from typing import Any, Optional
 
 import requests
 
@@ -17,12 +19,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = 30
 DEFAULT_DELAY_SECONDS = 1.0
 
+ADAPTIVE_CARD_SCHEMA = "http://adaptivecards.io/schemas/adaptive-card.json"
+ADAPTIVE_CARD_VERSION = "1.4"
+ADAPTIVE_CARD_CONTENT_TYPE = "application/vnd.microsoft.card.adaptive"
 
-def _e(value) -> str:
-    """HTML 이스케이프 + None/공백 안전 처리."""
+
+def _safe_str(value) -> str:
+    """None/빈 값을 '-'로 정규화."""
     if value is None:
-        return ""
-    return html.escape(str(value))
+        return "-"
+    s = str(value).strip()
+    return s if s else "-"
 
 
 def _format_price(value) -> str:
@@ -39,44 +46,83 @@ def _format_price(value) -> str:
         return s
 
 
-def build_html(item: dict) -> str:
-    """알림 HTML 본문 생성 (스펙 그대로)."""
-    keywords_list = item.get("_matched_keywords") or []
-    keywords = ", ".join(keywords_list) if keywords_list else "-"
-    region = item.get("_region_display") or "전국"
-    price = _format_price(item.get("presmptPrce"))
-    url = item.get("bidNtceDtlUrl") or item.get("bidNtceUrl") or ""
+def build_adaptive_card(bid_data: dict, matched_keywords: list[str]) -> dict:
+    """공고 1건에 대한 Adaptive Card 페이로드 전체 생성.
 
-    lines = [
-        f"<h2>📢 [신규 공고] {_e(item.get('bidNtceNm'))}</h2>",
-        f"<p><b>🔍 매칭 키워드:</b> {_e(keywords)}</p>",
-        f"<p><b>🏢 발주기관:</b> {_e(item.get('ntceInsttNm'))}</p>",
-        f"<p><b>🏛️ 수요기관:</b> {_e(item.get('dminsttNm'))}</p>",
-        f"<p><b>📋 공고번호:</b> {_e(item.get('bidNtceNo'))}-{_e(item.get('bidNtceOrd'))}</p>",
-        f"<p><b>📑 계약방식:</b> {_e(item.get('cntrctCnclsMthdNm'))}</p>",
-        f"<p><b>💰 추정가격:</b> {_e(price)}</p>",
-        f"<p><b>📍 참가가능지역:</b> {_e(region)}</p>",
-        f"<p><b>🏭 업종:</b> 1468 포함 ✅</p>",
-        f"<p><b>📅 공고일시:</b> {_e(item.get('bidNtceDate'))}</p>",
-        f"<p><b>⏰ 입찰마감:</b> {_e(item.get('bidClseDate'))}</p>",
-        f"<p><b>🎯 개찰일시:</b> {_e(item.get('opengDate'))}</p>",
+    반환값은 그대로 requests.post(json=...) 에 넘길 수 있는 dict.
+    """
+    keywords = ", ".join(matched_keywords) if matched_keywords else "-"
+    region = bid_data.get("_region_display") or "전국"
+    price = _format_price(bid_data.get("presmptPrce"))
+    url = bid_data.get("bidNtceDtlUrl") or bid_data.get("bidNtceUrl") or ""
+    bid_no = (
+        f"{_safe_str(bid_data.get('bidNtceNo'))}-"
+        f"{_safe_str(bid_data.get('bidNtceOrd'))}"
+    )
+
+    body: list[dict[str, Any]] = [
+        {
+            "type": "TextBlock",
+            "text": f"📢 [신규 공고] {_safe_str(bid_data.get('bidNtceNm'))}",
+            "weight": "Bolder",
+            "size": "Large",
+            "wrap": True,
+        },
+        {
+            "type": "FactSet",
+            "facts": [
+                {"title": "🔍 매칭 키워드", "value": keywords},
+                {"title": "🏢 발주기관", "value": _safe_str(bid_data.get("ntceInsttNm"))},
+                {"title": "🏛️ 수요기관", "value": _safe_str(bid_data.get("dminsttNm"))},
+                {"title": "📋 공고번호", "value": bid_no},
+                {"title": "📑 계약방식", "value": _safe_str(bid_data.get("cntrctCnclsMthdNm"))},
+                {"title": "💰 추정가격", "value": price},
+                {"title": "📍 참가가능지역", "value": region},
+                {"title": "🏭 업종", "value": "1468 포함 ✅"},
+                {"title": "📅 공고일시", "value": _safe_str(bid_data.get("bidNtceDate"))},
+                {"title": "⏰ 입찰마감", "value": _safe_str(bid_data.get("bidClseDate"))},
+                {"title": "🎯 개찰일시", "value": _safe_str(bid_data.get("opengDate"))},
+            ],
+        },
     ]
+
+    card: dict[str, Any] = {
+        "$schema": ADAPTIVE_CARD_SCHEMA,
+        "type": "AdaptiveCard",
+        "version": ADAPTIVE_CARD_VERSION,
+        "body": body,
+    }
+
     if url:
-        lines.append(f'<p>🔗 <a href="{_e(url)}">나라장터에서 상세 보기</a></p>')
-    return "".join(lines)
+        card["actions"] = [
+            {
+                "type": "Action.OpenUrl",
+                "title": "🔗 나라장터에서 상세 보기",
+                "url": url,
+            }
+        ]
+
+    return {
+        "attachments": [
+            {
+                "contentType": ADAPTIVE_CARD_CONTENT_TYPE,
+                "content": card,
+            }
+        ]
+    }
 
 
-def send_one(webhook_url: str, html_body: str, timeout: int = DEFAULT_TIMEOUT) -> bool:
+def send_one(webhook_url: str, payload: dict, timeout: int = DEFAULT_TIMEOUT) -> bool:
+    """Adaptive Card 페이로드 1건 전송."""
     try:
-        resp = requests.post(
-            webhook_url,
-            json={"text": html_body},
-            timeout=timeout,
-        )
+        resp = requests.post(webhook_url, json=payload, timeout=timeout)
         resp.raise_for_status()
         return True
     except requests.RequestException as exc:
         logger.error("[NOTIFY] Teams 전송 실패: %s", exc)
+        resp_obj: Optional[requests.Response] = getattr(exc, "response", None)
+        if resp_obj is not None:
+            logger.error("[NOTIFY] 응답 본문: %s", resp_obj.text[:500])
         return False
 
 
@@ -85,12 +131,13 @@ def send_all(
     items: list[dict],
     delay_seconds: float = DEFAULT_DELAY_SECONDS,
 ) -> tuple[int, int]:
-    """순차 전송. (성공 건수, 실패 건수) 반환."""
+    """공고 목록을 순차 전송. (성공, 실패) 반환."""
     sent = 0
     failed = 0
     for idx, item in enumerate(items):
-        body = build_html(item)
-        if send_one(webhook_url, body):
+        matched = item.get("_matched_keywords") or []
+        payload = build_adaptive_card(item, matched)
+        if send_one(webhook_url, payload):
             sent += 1
         else:
             failed += 1
