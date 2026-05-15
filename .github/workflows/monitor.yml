@@ -2,8 +2,10 @@ name: 나라장터 모니터
 
 on:
   schedule:
-    # 30분마다 (UTC 기준이지만 cron 표현은 시각 무관)
-    - cron: '*/30 * * * *'
+    # 15분 간격이지만 정각/30분(:00/:30) 부하 피크 회피.
+    # GitHub Actions cron은 부하시 지연/드롭되며 catch-up이 없으므로
+    # 정각 회피 + 다중 fire 기회로 누락률을 낮춤.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
 
 permissions:

@@ -71,5 +71,7 @@ allowed_region_names:
 # 지역제한 없는 공고도 포함할지 (true = 전국 가능 공고 알림)
 allow_no_region_restriction: true
 
-# API 검색 윈도우 (분)
-search_window_minutes: 35
+# API 검색 윈도우 (분). cron 누락 대비 여유분 — 한 회차가 드롭돼도
+# 다음 회차가 덮을 수 있도록 cron 간격(15분)의 4배로 설정.
+# seen.json 중복 제거로 같은 공고 재알림은 발생하지 않음.
+search_window_minutes: 60

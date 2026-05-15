@@ -147,7 +147,8 @@ search_window_minutes: 35                  # API 윈도우
 | 응답은 받았는데 통과 0건 | `DEBUG_DUMP=1`로 첫 응답 dump → 지역 필드명을 `filters.py`의 `REGION_FIELD_CANDIDATES`에 추가. 또는 검색 윈도우 늘려보기 (`search_window_minutes: 60`). 키워드가 너무 좁다면 `keywords_action`/`exclude_name_keywords` 완화. |
 | Teams 알림이 안 옴 | (1) Workflow URL 만료 — Teams에서 재발급. (2) JSON 본문 형식이 Workflows가 기대하는 `{"text": "..."}` 가 맞는지 확인 (이 코드는 맞춰져 있음). (3) Actions 실행 로그에서 `[NOTIFY]` 라인 확인. |
 | 동일 공고가 중복 알림됨 | seen.json 자동 커밋이 실패했을 가능성. Actions 실행 결과의 마지막 단계 로그 확인 — `permissions: contents: write`가 활성화되어 있어야 함. |
-| GitHub Actions 한도 | 30분마다 × 720회/월 × ~5분/회 = 약 220~250분/월. 무료 한도 2,000분 안에 충분히 들어갑니다. |
+| GitHub Actions 한도 | 15분 간격(시간당 4회) × 720시간 × ~1분/회 ≈ 약 700~720분/월. 무료 한도 2,000분 안. |
+| cron이 안 도는 시간대 있음 | GitHub Actions scheduled workflow는 부하 시 지연·드롭되며 catch-up 없음. 정각(`:00`/`:30`) 회피와 다중 fire로 완화. `search_window_minutes`를 cron 간격의 3~4배로 둬서 한 회차 누락해도 다음 회차가 덮도록 함. |
 
 ---
 
