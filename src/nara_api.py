@@ -116,8 +116,18 @@ def fetch_bid_list(
     logger.info("[API] 응답 OK, 총 %d건 수신", len(items))
 
     if debug_dump and items:
-        print("[DEBUG_DUMP] 첫 응답 항목의 모든 필드 ↓↓↓")
-        print(json.dumps(items[0], ensure_ascii=False, indent=2))
+        # 업종제한 있는 항목(indstrytyLmtYn=Y) 우선, 없으면 첫 항목
+        target = next(
+            (it for it in items if str(it.get("indstrytyLmtYn", "")).upper() == "Y"),
+            items[0],
+        )
+        label = (
+            "업종제한 있는 항목(indstrytyLmtYn=Y)"
+            if str(target.get("indstrytyLmtYn", "")).upper() == "Y"
+            else "첫 항목 (업종제한 있는 항목 없음)"
+        )
+        print(f"[DEBUG_DUMP] {label}의 모든 필드 ↓↓↓")
+        print(json.dumps(target, ensure_ascii=False, indent=2))
         print("[DEBUG_DUMP] ↑↑↑ 위 필드명으로 filters.py의 후보 리스트를 조정하세요.")
 
     return items
