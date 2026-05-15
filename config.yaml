@@ -1,5 +1,11 @@
-# 검색 키워드 (공고명에 포함되면 매칭, 대소문자 무시, OR 조건)
-keywords:
+# 매칭 규칙:
+#   ( (keywords_target 중 하나 포함) AND (keywords_action 중 하나 포함) )
+#   OR (keywords_whitelist 중 하나 포함)
+#   AND  NOT (exclude_name_keywords 중 하나 포함)
+# 모두 공고명(bidNtceNm)에 대해 대소문자 무시 substring 매칭.
+
+# 대상 키워드 (IT 산출물·시스템류)
+keywords_target:
   - LMS
   - 홈페이지
   - 사이트
@@ -7,10 +13,46 @@ keywords:
   - 웹
   - 시스템
   - 플랫폼
+  - 앱
+  - 어플
+
+# 행위 키워드 (구축/개발류 동사) — target과 AND 조합되어야 통과
+keywords_action:
   - 구축
   - 개발
-  - RISE
+  - 제작
+  - 고도화
+  - 리뉴얼
+  - 유지관리
+  - 운영
+
+# 화이트리스트 — 이 키워드 단독으로도 통과 (짧고 명확한 식별자)
+keywords_whitelist:
   - AI
+  - RISE
+
+# 공고명에 이 단어 들어가면 매칭이어도 무조건 제외 (비IT 분야 차단)
+exclude_name_keywords:
+  - 공사
+  - 토목
+  - 건축
+  - 교량
+  - 도로
+  - 포장
+  - 상수도
+  - 하수
+  - 정수장
+  - 방수
+  - 조경
+  - 설비
+  - 기계
+  - 청소
+  - 경비
+  - 시설관리
+  - 철거
+  - 해체
+  - 전기공사
+  - 통신공사
 
 # 계약방식 제외 키워드 (포함되면 제외)
 exclude_contract_keywords:
@@ -28,10 +70,6 @@ allowed_region_names:
 
 # 지역제한 없는 공고도 포함할지 (true = 전국 가능 공고 알림)
 allow_no_region_restriction: true
-
-# 참가 가능 업종코드 (반드시 포함되어야 함, 엄격 필터)
-required_industry_codes:  
- - "1468"
 
 # API 검색 윈도우 (분)
 search_window_minutes: 35

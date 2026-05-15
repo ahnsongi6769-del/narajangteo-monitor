@@ -1,6 +1,6 @@
 # 나라장터 모니터
 
-조달청 나라장터 **용역 입찰공고**를 30분마다 자동으로 폴링해서, 4단계 필터(키워드 / 계약방식 / 지역 / 업종1468)를 모두 통과한 **신규** 공고만 Microsoft Teams 채팅으로 알림 보냅니다.
+조달청 나라장터 **용역 입찰공고**를 30분마다 자동으로 폴링해서, 3단계 필터(공고명 키워드 / 계약방식 / 지역)를 모두 통과한 **신규** 공고만 Microsoft Teams 채팅으로 알림 보냅니다.
 
 GitHub Actions가 무료 한도 안에서 (월 ~220분) 알아서 돌립니다. 별도 서버 필요 없음.
 
@@ -16,10 +16,9 @@ GitHub Actions (cron */30)
   나라장터 API 호출  ─── 5xx/네트워크 오류 시 1·2·4초 백오프
         │
         ▼
-  ┌─ 필터 1: 공고명 키워드 (LMS, 홈페이지, 시스템, ...) ─┐
-  ├─ 필터 2: 계약방식 (수의/지명 제외)                  ┤
-  ├─ 필터 3: 지역제한 (충청권 또는 전국)                ┤
-  └─ 필터 4: 업종코드 1468 명시적 포함 (엄격)           ┘
+  ┌─ 필터 1: 공고명 (대상 AND 행위) 또는 화이트리스트, 비IT 제외 ─┐
+  ├─ 필터 2: 계약방식 (수의/지명 제외)                            ┤
+  └─ 필터 3: 지역제한 (충청권 또는 전국)                          ┘
         │
         ▼
   seen.json 으로 중복 제거
@@ -80,7 +79,7 @@ python -m src.monitor
 DEBUG_DUMP=1
 ```
 
-출력을 보고 `src/filters.py`의 `REGION_FIELD_CANDIDATES` / `INDUSTRY_FIELD_CANDIDATES` 튜플에 실제 필드명을 추가하세요.
+출력을 보고 `src/filters.py`의 `REGION_FIELD_CANDIDATES` 튜플에 실제 필드명을 추가하세요.
 
 ---
 
@@ -89,15 +88,26 @@ DEBUG_DUMP=1
 `config.yaml` 한 곳에서 모든 필터를 조정합니다.
 
 ```yaml
-keywords: [LMS, 홈페이지, 시스템, ...]   # 공고명 OR 매칭
+# 매칭 = ( (target 중 하나) AND (action 중 하나) ) OR (whitelist 중 하나)
+#        AND  NOT (exclude_name_keywords 중 하나)
+keywords_target:    [LMS, 홈페이지, 사이트, 포털, 웹, 시스템, 플랫폼, 앱, 어플]
+keywords_action:    [구축, 개발, 제작, 고도화, 리뉴얼, 유지관리, 운영]
+keywords_whitelist: [AI, RISE]
+exclude_name_keywords: [공사, 토목, 건축, 교량, 도로, ...]   # 공고명에 있으면 제외
+
 exclude_contract_keywords: [수의, 지명]    # 계약방식에 이 단어 들어가면 제외
 allowed_region_names: [대전, 세종, 충북, 충청북도, 충남, 충청남도]
 allow_no_region_restriction: true          # 지역제한 없는 공고도 알림
-required_industry_codes: ["1468"]          # 엄격 — 명시되지 않으면 제외
 search_window_minutes: 35                  # API 윈도우
 ```
 
 수정 후 커밋·푸시하면 다음 cron 실행부터 반영됩니다.
+
+> 💡 키워드 매칭 예시
+> - "LMS **고도화** 용역" → 통과 (LMS + 고도화)
+> - "**AI** 챗봇 구축" → 통과 (AI 화이트리스트)
+> - "교량 시스템 구축" → 제외 (`교량` 비IT 키워드)
+> - "시스템 점검" → 제외 (action 키워드 없음)
 
 ---
 
@@ -118,13 +128,12 @@ search_window_minutes: 35                  # API 윈도우
 [START] 2026-05-14 14:30:00 KST
 [API] 호출 윈도우: 202605141355 ~ 202605141430
 [API] 응답 OK, 총 47건 수신
-[FILTER:키워드] 47건 → 12건
-[FILTER:계약방식] 12건 → 9건
-[FILTER:지역] 9건 → 4건
-[FILTER:업종1468] 4건 → 2건 (최종 신규 후보)
-[DEDUP] 2건 중 신규 2건
+[FILTER:키워드] 47건 → 8건
+[FILTER:계약방식] 8건 → 6건
+[FILTER:지역] 6건 → 3건 (최종 신규 후보)
+[DEDUP] 3건 중 신규 2건
 [NOTIFY] Teams 전송 성공 2건 / 실패 0건
-[END] 소요 시간 3.4초
+[END] 소요 시간 1.8초
 ```
 
 ---
@@ -135,7 +144,7 @@ search_window_minutes: 35                  # API 윈도우
 | --- | --- |
 | `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` | 공공데이터포털에서 키가 아직 활성화되지 않음. 신청 직후 1~2시간 대기 후 재시도. |
 | `4xx` 에러로 즉시 실패 | 인증키 형식 오류 (Decoding 키 대신 Encoded 키를 넣었거나, 공백/줄바꿈 섞임). Secret 다시 확인. |
-| 응답은 받았는데 통과 0건 | `DEBUG_DUMP=1`로 첫 응답 dump → 지역·업종 필드명을 `filters.py` 후보에 추가. 또는 검색 윈도우 늘려보기 (`search_window_minutes: 60`). |
+| 응답은 받았는데 통과 0건 | `DEBUG_DUMP=1`로 첫 응답 dump → 지역 필드명을 `filters.py`의 `REGION_FIELD_CANDIDATES`에 추가. 또는 검색 윈도우 늘려보기 (`search_window_minutes: 60`). 키워드가 너무 좁다면 `keywords_action`/`exclude_name_keywords` 완화. |
 | Teams 알림이 안 옴 | (1) Workflow URL 만료 — Teams에서 재발급. (2) JSON 본문 형식이 Workflows가 기대하는 `{"text": "..."}` 가 맞는지 확인 (이 코드는 맞춰져 있음). (3) Actions 실행 로그에서 `[NOTIFY]` 라인 확인. |
 | 동일 공고가 중복 알림됨 | seen.json 자동 커밋이 실패했을 가능성. Actions 실행 결과의 마지막 단계 로그 확인 — `permissions: contents: write`가 활성화되어 있어야 함. |
 | GitHub Actions 한도 | 30분마다 × 720회/월 × ~5분/회 = 약 220~250분/월. 무료 한도 2,000분 안에 충분히 들어갑니다. |
@@ -151,10 +160,10 @@ narajangteo-monitor/
 │   ├── __init__.py
 │   ├── monitor.py                  # 메인 파이프라인 + 로깅
 │   ├── nara_api.py                 # API 호출 + 재시도 + DEBUG_DUMP
-│   ├── filters.py                  # 4단계 필터
-│   ├── teams_notifier.py           # 웹훅 POST + HTML
+│   ├── filters.py                  # 3단계 필터
+│   ├── teams_notifier.py           # 웹훅 POST + Adaptive Card
 │   └── dedup.py                    # seen.json 관리
-├── config.yaml                     # 키워드·지역·업종 설정
+├── config.yaml                     # 키워드·지역 설정
 ├── seen.json                       # 자동 생성·갱신 (gitignored, Actions가 강제 커밋)
 ├── requirements.txt
 ├── .gitignore

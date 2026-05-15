@@ -1,14 +1,12 @@
-"""4단계 필터: 키워드 / 계약방식 / 지역 / 업종1468.
+"""3단계 필터: 공고명(키워드+제외) / 계약방식 / 지역.
 
 각 필터는 list[dict] → list[dict] 시그니처이며, 통과 항목에 메타데이터를 주입할 수 있습니다:
-- _matched_keywords: 매칭된 키워드 목록
+- _matched_keywords: 매칭된 키워드 목록 (알림에 표시)
 - _region_display: 알림에 표시할 지역 텍스트
 """
 from __future__ import annotations
 
 import logging
-import re
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +18,6 @@ REGION_FIELD_CANDIDATES: tuple[str, ...] = (
     "rgnLmtNm",
     "prtcptLmtRgnCd",
 )
-
-# 업종 필드 후보 (응답 스펙에 따라 다름)
-INDUSTRY_FIELD_CANDIDATES: tuple[str, ...] = (
-    "bidPrtcptLmtNm",
-    "indstrytyNm",
-    "indstrytyCd",
-    "lcnsLmtNm",
-    "prtcptLmtCnstwkLcnsNm",
-    "prtcptLmtIndstrytyNm",
-)
-
-
-# 업종 텍스트에서 숫자 코드 토큰만 추출하기 위한 정규식.
-# "소프트웨어개발(1468) / 정보처리(1469)" → ["1468", "1469"]
-# "14681" → ["14681"]  (이렇게 토큰화하면 '1468' substring 매칭의 false-positive 방지)
-_CODE_TOKEN_RE = re.compile(r"\d+")
-
-
-def _extract_code_tokens(text: str) -> set[str]:
-    """텍스트에서 연속된 숫자열만 뽑아 토큰 집합 반환."""
-    return set(_CODE_TOKEN_RE.findall(text or ""))
 
 
 def _first_nonempty(item: dict, fields: tuple[str, ...]) -> str:
@@ -55,19 +32,58 @@ def _first_nonempty(item: dict, fields: tuple[str, ...]) -> str:
     return ""
 
 
-def filter_by_keywords(items: list[dict], keywords: list[str]) -> list[dict]:
-    """공고명(bidNtceNm)에 키워드 하나라도 포함 (대소문자 무시, OR).
+def _dedup_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def filter_by_keywords(
+    items: list[dict],
+    target_keywords: list[str],
+    action_keywords: list[str],
+    whitelist_keywords: list[str],
+    exclude_keywords: list[str],
+) -> list[dict]:
+    """공고명(bidNtceNm) 통합 매칭.
+
+    통과 조건:
+      ( (target 중 하나 포함) AND (action 중 하나 포함) )
+      OR (whitelist 중 하나 포함)
+      AND  NOT (exclude 중 하나 포함)
 
     매칭된 키워드를 item['_matched_keywords']에 저장.
     """
-    lowered = [(k, k.lower()) for k in keywords]
+    targets = [(k, k.lower()) for k in target_keywords if k]
+    actions = [(k, k.lower()) for k in action_keywords if k]
+    whitelists = [(k, k.lower()) for k in whitelist_keywords if k]
+    excludes = [low for k in exclude_keywords if k for low in (k.lower(),)]
+
     out: list[dict] = []
     for item in items:
         name_lower = str(item.get("bidNtceNm", "")).lower()
-        matched = [orig for orig, low in lowered if low and low in name_lower]
-        if matched:
-            item["_matched_keywords"] = matched
-            out.append(item)
+
+        if any(ex in name_lower for ex in excludes):
+            continue
+
+        matched_targets = [orig for orig, low in targets if low in name_lower]
+        matched_actions = [orig for orig, low in actions if low in name_lower]
+        matched_whitelists = [orig for orig, low in whitelists if low in name_lower]
+
+        passes_and = bool(matched_targets and matched_actions)
+        passes_whitelist = bool(matched_whitelists)
+
+        if not (passes_and or passes_whitelist):
+            continue
+
+        item["_matched_keywords"] = _dedup_preserve_order(
+            matched_targets + matched_actions + matched_whitelists
+        )
+        out.append(item)
     return out
 
 
@@ -104,38 +120,5 @@ def filter_by_region(
 
         if any(rg in region_text for rg in allowed_regions):
             item["_region_display"] = region_text
-            out.append(item)
-    return out
-
-
-def filter_by_industry(
-    items: list[dict],
-    required_codes: list[str],
-    detail_fetcher: Optional[Callable[[str, str], Optional[dict]]] = None,
-) -> list[dict]:
-    """업종코드 엄격 필터: required_codes가 모두 명시적으로 포함된 공고만 통과.
-
-    1) 목록 응답의 후보 필드들을 먼저 검사.
-    2) 비어있으면 detail_fetcher(bidNtceNo, bidNtceOrd)로 상세 조회 시도.
-    3) 그래도 없으면 제외 (엄격 정책).
-    """
-    out: list[dict] = []
-    for item in items:
-        text = _first_nonempty(item, INDUSTRY_FIELD_CANDIDATES)
-
-        if not text and detail_fetcher is not None:
-            no = str(item.get("bidNtceNo", "") or "")
-            ord_ = str(item.get("bidNtceOrd", "") or "")
-            detail = detail_fetcher(no, ord_)
-            if detail:
-                text = _first_nonempty(detail, INDUSTRY_FIELD_CANDIDATES)
-
-        if not text:
-            # 1468 미확인 → 엄격 제외
-            continue
-
-        # 숫자 토큰으로 분리해 정확 매칭 — "14681" / "21468" 같은 우연한 부분 일치 방지
-        code_tokens = _extract_code_tokens(text)
-        if all(code in code_tokens for code in required_codes):
             out.append(item)
     return out
