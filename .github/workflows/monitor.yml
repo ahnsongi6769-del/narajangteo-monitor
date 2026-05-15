@@ -37,7 +37,6 @@ jobs:
         env:
           NARA_API_KEY: ${{ secrets.NARA_API_KEY }}
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          DEBUG_DUMP: '1'  # TODO: 응답 필드 확인 후 제거
         run: python -m src.monitor
 
       - name: Commit updated seen.json

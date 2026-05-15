@@ -19,6 +19,13 @@ REGION_FIELD_CANDIDATES: tuple[str, ...] = (
     "prtcptLmtRgnCd",
 )
 
+# 조달분류 필드(대분류/중분류/세부분류). 어느 하나에라도 제외 키워드가 잡히면 컷.
+CLSFC_FIELD_CANDIDATES: tuple[str, ...] = (
+    "pubPrcrmntLrgClsfcNm",
+    "pubPrcrmntMidClsfcNm",
+    "pubPrcrmntClsfcNm",
+)
+
 
 def _first_nonempty(item: dict, fields: tuple[str, ...]) -> str:
     """후보 필드들 중 비어있지 않은 첫 번째 값(문자열) 반환."""
@@ -96,6 +103,22 @@ def filter_by_contract_method(
     for item in items:
         method = str(item.get("cntrctCnclsMthdNm", ""))
         if any(ex and ex in method for ex in exclude_keywords):
+            continue
+        out.append(item)
+    return out
+
+
+def filter_by_classification(
+    items: list[dict],
+    exclude_keywords: list[str],
+) -> list[dict]:
+    """조달분류(대/중/세부) 어디든 제외 키워드가 포함되면 제외."""
+    if not exclude_keywords:
+        return list(items)
+    out: list[dict] = []
+    for item in items:
+        joined = " ".join(str(item.get(f, "")) for f in CLSFC_FIELD_CANDIDATES)
+        if any(ex and ex in joined for ex in exclude_keywords):
             continue
         out.append(item)
     return out

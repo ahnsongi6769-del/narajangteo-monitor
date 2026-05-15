@@ -62,6 +62,12 @@ exclude_contract_keywords:
   - 수의
   - 지명
 
+# 조달분류 제외 키워드 (대/중/세부 분류명 어디든 포함되면 제외)
+# 예: 공고명은 "준설사업"이지만 분류가 "건설장비임대서비스"인 경우 등
+# 이름 기반 exclude_name_keywords가 못 잡는 본질적 비IT 발주를 차단.
+exclude_clsfc_keywords:
+  - 임대
+
 # 허용 지역명 (공고의 지역제한 텍스트에 포함되어야 함)
 allowed_region_names:
   - 대전

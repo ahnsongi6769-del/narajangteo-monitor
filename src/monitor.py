@@ -3,7 +3,7 @@
 흐름:
   config 로드
   → API 호출 (최근 N분)
-  → 공고명(키워드+제외) → 계약방식 → 지역 필터
+  → 공고명(키워드+제외) → 계약방식 → 조달분류 → 지역 필터
   → seen.json 중복 제거
   → Teams 순차 전송 (1초 간격)
   → seen.json 업데이트 (+ 30일 청소)
@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from .dedup import cleanup_old, filter_new, load_seen, mark_sent, save_seen
 from .filters import (
+    filter_by_classification,
     filter_by_contract_method,
     filter_by_keywords,
     filter_by_region,
@@ -69,6 +70,7 @@ def main() -> int:
     whitelist_keywords = list(config.get("keywords_whitelist", []))
     exclude_name_keywords = list(config.get("exclude_name_keywords", []))
     exclude_contract = list(config.get("exclude_contract_keywords", []))
+    exclude_clsfc = list(config.get("exclude_clsfc_keywords", []))
     allowed_regions = list(config.get("allowed_region_names", []))
     allow_no_region = bool(config.get("allow_no_region_restriction", True))
     window_minutes = int(config.get("search_window_minutes", 35))
@@ -101,8 +103,11 @@ def main() -> int:
     after_ct = filter_by_contract_method(after_kw, exclude_contract)
     print(f"[FILTER:계약방식] {len(after_kw)}건 → {len(after_ct)}건")
 
-    after_rg = filter_by_region(after_ct, allowed_regions, allow_no_region)
-    print(f"[FILTER:지역] {len(after_ct)}건 → {len(after_rg)}건 (최종 신규 후보)")
+    after_cl = filter_by_classification(after_ct, exclude_clsfc)
+    print(f"[FILTER:조달분류] {len(after_ct)}건 → {len(after_cl)}건")
+
+    after_rg = filter_by_region(after_cl, allowed_regions, allow_no_region)
+    print(f"[FILTER:지역] {len(after_cl)}건 → {len(after_rg)}건 (최종 신규 후보)")
 
     seen = load_seen(SEEN_PATH)
     seen = cleanup_old(seen)
