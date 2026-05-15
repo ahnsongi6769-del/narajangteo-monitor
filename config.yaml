@@ -53,6 +53,8 @@ exclude_name_keywords:
   - 해체
   - 전기공사
   - 통신공사
+  - 위탁
+  - 임차
 
 # 계약방식 제외 키워드 (포함되면 제외)
 exclude_contract_keywords:
