@@ -78,9 +78,6 @@ def build_adaptive_card(bid_data: dict, matched_keywords: list[str]) -> dict:
                 {"title": "📑 계약방식", "value": _safe_str(bid_data.get("cntrctCnclsMthdNm"))},
                 {"title": "💰 추정가격", "value": price},
                 {"title": "📍 참가가능지역", "value": region},
-                {"title": "📅 공고일시", "value": _safe_str(bid_data.get("bidNtceDate"))},
-                {"title": "⏰ 입찰마감", "value": _safe_str(bid_data.get("bidClseDate"))},
-                {"title": "🎯 개찰일시", "value": _safe_str(bid_data.get("opengDate"))},
             ],
         },
     ]
